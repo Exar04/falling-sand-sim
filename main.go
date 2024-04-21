@@ -5,11 +5,19 @@ import (
 	"image"
 	_ "image/png"
 	"os"
+	"time"
 
 	"github.com/faiface/pixel"
 	"github.com/faiface/pixel/imdraw"
 	"github.com/faiface/pixel/pixelgl"
 )
+
+const windowSizeX = 800
+const windowSizeY = 800
+
+const rows = 200
+const cols = 200
+const sizeOfBlock = float64(windowSizeX / rows)
 
 type Square struct {
 	posx float64
@@ -35,8 +43,7 @@ func (r *Square) DrawSquare() *imdraw.IMDraw {
 
 	imd := imdraw.New(nil)
 
-	// imd.Color = r.color
-	// imd.Color = pixel.RGBA{R: 1, G: 1, B: 1, A: 0}
+	imd.Color = r.color
 
 	imd.Push(pixel.V(r.posx, r.posy))
 	imd.Push(pixel.V(r.posx+r.size, r.posy))
@@ -48,38 +55,17 @@ func (r *Square) DrawSquare() *imdraw.IMDraw {
 	return imd
 }
 
-func main() {
-	pixelgl.Run(run)
+func (r *Square) pushSqr() [4]pixel.Vec {
+	arr := [4]pixel.Vec{}
+
+	arr[0] = pixel.Vec{X: r.posx, Y: r.posy}
+	arr[1] = pixel.Vec{X: r.posx + r.size, Y: r.posy}
+	arr[2] = pixel.Vec{X: r.posx + r.size, Y: r.posy + r.size}
+	arr[3] = pixel.Vec{X: r.posx, Y: r.posy + r.size}
+
+	return arr
 }
 
-// so to create a sand effect we first need to divide our window into a matrix
-// after that when a on click even occours on mouse we will take the position of the mouse and put a rectangle there
-// and then check its adjecent blocks if they are empty the rectangle will fall down
-// and if we have mouse clicked and there is already a block on that matrix we will not add a new one
-
-const windowSizeX = 800
-const windowSizeY = 800
-
-func run() {
-	cfg := pixelgl.WindowConfig{
-		Title:  "Pixel Rocks!",
-		Bounds: pixel.R(0, 0, windowSizeX, windowSizeY),
-		VSync:  true,
-	}
-
-	win, err := pixelgl.NewWindow(cfg)
-	if err != nil {
-		panic(err)
-	}
-	nero := CreateSquare(10, 10, 5, pixel.RGB(1, 1, 1))
-	imd := nero.DrawSquare()
-
-	for !win.Closed() {
-
-		imd.Draw(win)
-		win.Update()
-	}
-}
 func runo() {
 	cfg := pixelgl.WindowConfig{
 		Title:  "Pixel Rocks!",
@@ -92,64 +78,174 @@ func runo() {
 		panic(err)
 	}
 
-	// creating a matrix of size of window
-	rows := 8
-	cols := 8
-	squareMat := make([][]int, rows)
+	imd := imdraw.New(nil)
+	imd.Push(pixel.V(100, 200))
+	imd.Push(pixel.V(100, 100))
+	imd.Push(pixel.V(200, 100))
+	imd.Push(pixel.V(200, 200))
+
+	imd.Polygon(0)
+
+	imd.Push(pixel.V(300, 400))
+	imd.Push(pixel.V(300, 300))
+	imd.Push(pixel.V(400, 300))
+	imd.Push(pixel.V(400, 400))
+
+	imd.Polygon(0)
+
+	imd.Draw(win)
+	for !win.Closed() {
+
+		imd.Draw(win)
+		win.Update()
+	}
+}
+func main() {
+	pixelgl.Run(run)
+}
+
+// so to create a sand effect we first need to divide our window into a matrix
+// after that when a on click even occours on mouse we will take the position of the mouse and put a rectangle there
+// and then check its adjecent blocks if they are empty the rectangle will fall down
+// and if we have mouse clicked and there is already a block on that matrix we will not add a new one
+
+func run() {
+	cfg := pixelgl.WindowConfig{
+		Title:  "Pixel Rocks!",
+		Bounds: pixel.R(0, 0, windowSizeX, windowSizeY),
+		VSync:  true,
+	}
+
+	win, err := pixelgl.NewWindow(cfg)
+	if err != nil {
+		panic(err)
+	}
+
+	squareMat := make([][]bool, rows)
+	preDefPositionMatrix := make([][]pixel.Vec, rows)
+	normalisedMatrixPositionValues := make([][]pixel.Vec, rows)
+
 	for i := range squareMat {
-		squareMat[i] = make([]int, cols)
+		squareMat[i] = make([]bool, cols)
+		preDefPositionMatrix[i] = make([]pixel.Vec, cols)
+		normalisedMatrixPositionValues[i] = make([]pixel.Vec, cols)
+		// rasterizedColors[i] = make([]int, cols)
 	}
 
 	for i := 0; i < rows; i++ {
 		for j := 0; j < cols; j++ {
-			squareMat[i][j] = j // Assigning a simple value for demonstration
+			squareMat[i][j] = false
+
+			pb := getPositionOfBlock(i, j, (windowSizeX / rows))
+			preDefPositionMatrix[i][j] = pixel.Vec{X: pb.X, Y: pb.Y}
+
+			npx := normalizeToWindowSizeX(float64(i), 0, float64(rows))
+			npy := normalizeToWindowSizeY(float64(j), 0, float64(cols))
+
+			normalisedMatrixPositionValues[i][j] = pixel.Vec{X: npx, Y: npy}
 		}
 	}
 
+	rasterizedColors := make([]int, rows*cols)
 	for !win.Closed() {
 
 		win.Clear(pixel.RGB(0, 0, 0))
+		rasterizedMatrix := make([][4]pixel.Vec, 0)
+
+		imd := imdraw.New(nil)
 
 		for i := 0; i < rows; i++ {
 			for j := 0; j < cols; j++ {
-				if squareMat[i][j] == 2 {
 
+				if win.Pressed(pixelgl.MouseButtonLeft) {
+					if isMouseInsideBlock(win, preDefPositionMatrix[i][j].X, preDefPositionMatrix[i][j].Y, sizeOfBlock) {
+						rasterizedColors[i*cols+j] = 1
+					}
 				}
-				// if squareMat[i][j] == 1 {
-				// 	imd := imdraw.New(nil)
 
-				// 	imd.EndShape = imdraw.RoundEndShape
-				// 	transparentWhite := colornames.White
-				// 	transparentWhite.A = uint8(normalizeTo_0_255(float64(j), 0, 8))
-				// 	imd.Color = transparentWhite
+				if rasterizedColors[i*cols+j] == 1 && j < cols-1 {
+					if rasterizedColors[i*cols+(j+1)] == 0 {
+						rasterizedColors[i*cols+(j+1)] = 2
+						rasterizedColors[i*cols+j] = 0
+					}
+				}
+				if rasterizedColors[i*cols+j] == 2 && j < cols-1 {
+					rasterizedColors[i*cols+j] = 1
+				}
 
-				// 	imd.Push(pixel.V(1024/2, 780/2), pixel.V(1024/2, 780/2))
-				// 	imd.Line(5)
-				// 	imd.Draw(win)
-				// }
+				nero := CreateSquare(
+					normalisedMatrixPositionValues[i][j].X,
+					normalisedMatrixPositionValues[i][j].Y,
+					float64(windowSizeX/rows), pixel.RGB(1, 1, 1),
+				)
+				rasterizedMatrix = append(rasterizedMatrix, nero.pushSqr())
 			}
 		}
 
-		win.Update()
-	}
+		// fmt.Println(rasterizedColors)
+		for i := range rasterizedMatrix {
+			var colo float64
+			if rasterizedColors[i] == 1 || rasterizedColors[i] == 2 {
+				colo = 1
+			} else {
+				colo = 0
+			}
+			// colo := float64(rasterizedColors[i])
+			imd.Color = pixel.RGB(colo, colo, colo)
+			for j := range rasterizedMatrix[i] {
+				imd.Push(rasterizedMatrix[i][j])
+			}
+			imd.Polygon(0)
+		}
+		imd.Draw(win)
 
+		win.Update()
+		time.Sleep(time.Millisecond * 10)
+	}
+	// fmt.Println(rasterizedMatrix)
+
+}
+
+// in an array there are blocks we check if our mouse is inside a given block
+// we will calculate it by ckecking if our mouse is inside the range of your block
+func isMouseInsideBlock(win *pixelgl.Window, blockPosX, blockPosY, size float64) bool {
+	mp := win.MousePosition()
+	if mp.X >= blockPosX && mp.X <= blockPosX+size && mp.Y >= blockPosY && mp.Y <= blockPosY+size {
+		return true
+	} else {
+		return false
+	}
+}
+
+func getPositionOfBlock(x, y, s int) pixel.Vec {
+	px := normalizeToWindowSizeX(float64(x), 0, float64(rows))
+	py := windowSizeY - normalizeToWindowSizeY(float64(y), 0, float64(cols)) - float64(s)
+	p := pixel.Vec{X: px, Y: py}
+	return p
 }
 
 func normalizeTo_0_255(value, min, max float64) float64 {
 	return (value - min) * (255.0 / (max - min))
 }
 
-// func normalizeToWindowSizeX(value, min, max, newMin, newMax float64) float64 {
-// 	return ((value - min) * (newMax - newMin) / (max - min)) + newMin
-// }
+func normalizeTo_0_1(value, min, max float64) float64 {
+	return (value - min) * (1.0 / (max - min))
+}
 
+// min represents the mininum range of value we are giving that is 5 from range (0 to 10)
+// this function converts our value from our given range to window size range
 func normalizeToWindowSizeX(value, min, max float64) float64 {
-	// return (value - min) * (windowSizeX / (max - min))
-	return (value-min)*(((windowSizeX-10)-10)/(max-min)) + 10
+	return (value - min) * (windowSizeX / (max - min))
 }
 func normalizeToWindowSizeY(value, min, max float64) float64 {
-	// return (value - min) * (windowSizeY / (max - min))
-	return (value-min)*(((windowSizeY-10)-10)/(max-min)) + 10
+	return (value - min) * (windowSizeY / (max - min))
+}
+
+func normalizeToWindowSizeXWithPadding(value, min, max, padding float64) float64 {
+	return (value-min)*((windowSizeX-padding*2)/(max-min)) + padding
+}
+func normalizeToWindowSizeYWithPadding(value, min, max, padding float64) float64 {
+	return (value-min)*((windowSizeY-padding*2)/(max-min)) + padding
 }
 
 func loadImage(path string) (pixel.Picture, error) {
@@ -169,7 +265,6 @@ func loadImage(path string) (pixel.Picture, error) {
 
 func eventHandler(win *pixelgl.Window) {
 	if win.Pressed(pixelgl.MouseButtonLeft) {
-		fmt.Println("left clicked")
 	}
 
 	if win.Pressed(pixelgl.MouseButtonRight) {
