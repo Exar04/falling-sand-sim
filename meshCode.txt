@@ -1,0 +1,80 @@
+
+func run() {
+	cfg := pixelgl.WindowConfig{
+		Title:  "Pixel Rocks!",
+		Bounds: pixel.R(0, 0, 1024, 780),
+		VSync:  true,
+	}
+
+	ballImage, err := loadImage("ball.png")
+	if err != nil {
+		panic(err)
+	}
+	ballPosiX := float64(1024 / 2)
+	ballPosiY := float64(780 / 2)
+	ball_sprite := pixel.NewSprite(ballImage, ballImage.Bounds())
+	ball_sprite2 := pixel.NewSprite(ballImage, ballImage.Bounds())
+
+	win, err := pixelgl.NewWindow(cfg)
+	if err != nil {
+		panic(err)
+	}
+
+	var previousMousePosition pixel.Vec
+	for !win.Closed() {
+
+		eventHandler(win)
+		win.Clear(pixel.RGB(0, 0, 0))
+
+		mousePosition := win.MousePosition()
+
+		proximityThreshold := 20.0
+
+		if mousePosition.X >= ballPosiX-proximityThreshold && mousePosition.X <= ballPosiX+proximityThreshold && mousePosition.Y >= ballPosiY-proximityThreshold && mousePosition.Y <= ballPosiY+proximityThreshold {
+
+			if previousMousePosition.X >= mousePosition.X {
+				if mousePosition.X >= ballPosiX {
+					ballPosiX -= 1
+				} else {
+					ballPosiX += 1
+				}
+			}
+			if previousMousePosition.X <= mousePosition.X {
+				if mousePosition.X >= ballPosiX {
+					ballPosiX -= 1
+				} else {
+					ballPosiX += 1
+				}
+			}
+			if previousMousePosition.Y >= mousePosition.Y {
+				if mousePosition.Y >= ballPosiY {
+					ballPosiY -= 1
+				} else {
+					ballPosiY += 1
+				}
+			}
+			if previousMousePosition.Y <= mousePosition.Y {
+				if mousePosition.Y >= ballPosiY {
+					ballPosiY -= 1
+				} else {
+					ballPosiY += 1
+				}
+			}
+
+		}
+		imd := imdraw.New(nil)
+		imd.Color = colornames.White
+		imd.EndShape = imdraw.RoundEndShape
+		imd.Push(pixel.V(ballPosiX, ballPosiY), pixel.V(1024/2, 780/2))
+		imd.Line(3)
+		imd.Draw(win)
+
+		ball_sprite.Draw(win, pixel.IM.Moved(pixel.V(ballPosiX, ballPosiY)))
+		ball_sprite2.Draw(win, pixel.IM.Moved(pixel.V(1024/2, 780/2)))
+
+		win.Update()
+
+		previousMousePosition = mousePosition
+	}
+
+}
