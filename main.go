@@ -185,6 +185,9 @@ func run() {
 					} else if i > 0 && rasterizedColors[i-1][j+1] == 0 {
 						rasterizedColors[i-1][j+1] = 2
 						rasterizedColors[i][j] = 0
+					} else if i > 0 && (rasterizedColors[i][j+1] == 3 || rasterizedColors[i][j+1] == 4) {
+						rasterizedColors[i][j+1] = 2
+						rasterizedColors[i][j] = 3
 					}
 				}
 				// 2 represents that sand block had been moved from above row to below row
