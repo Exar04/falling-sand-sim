@@ -5,7 +5,6 @@ import (
 	"image"
 	_ "image/png"
 	"os"
-	"time"
 
 	"github.com/faiface/pixel"
 	"github.com/faiface/pixel/imdraw"
@@ -124,12 +123,18 @@ func run() {
 	squareMat := make([][]bool, rows)
 	preDefPositionMatrix := make([][]pixel.Vec, rows)
 	normalisedMatrixPositionValues := make([][]pixel.Vec, rows)
+	// rasterizedColors := make([]int, rows*cols)
+	rasterizedColors := make([][]int, rows)
+
+	colorSwitch := true
+	sandColor := [3]float64{0.96, 0.84, 0.65}
+	waterColor := [3]float64{0.65, 0.88, 0.93}
 
 	for i := range squareMat {
 		squareMat[i] = make([]bool, cols)
 		preDefPositionMatrix[i] = make([]pixel.Vec, cols)
 		normalisedMatrixPositionValues[i] = make([]pixel.Vec, cols)
-		// rasterizedColors[i] = make([]int, cols)
+		rasterizedColors[i] = make([]int, cols)
 	}
 
 	for i := 0; i < rows; i++ {
@@ -146,31 +151,75 @@ func run() {
 		}
 	}
 
-	rasterizedColors := make([]int, rows*cols)
 	for !win.Closed() {
 
-		win.Clear(pixel.RGB(0, 0, 0))
+		win.Clear(pixel.RGB(0.1, .17, .12))
 		rasterizedMatrix := make([][4]pixel.Vec, 0)
 
 		imd := imdraw.New(nil)
+
+		if win.JustReleased(pixelgl.MouseButtonLeft) {
+			colorSwitch = !colorSwitch
+		}
 
 		for i := 0; i < rows; i++ {
 			for j := 0; j < cols; j++ {
 
 				if win.Pressed(pixelgl.MouseButtonLeft) {
 					if isMouseInsideBlock(win, preDefPositionMatrix[i][j].X, preDefPositionMatrix[i][j].Y, sizeOfBlock) {
-						rasterizedColors[i*cols+j] = 1
+						if colorSwitch {
+							rasterizedColors[i][j] = 1 // 1 represents sand
+						} else {
+							rasterizedColors[i][j] = 3 // 3 represents water
+						}
+					}
+				}
+				// sim for sand
+				if rasterizedColors[i][j] == 1 {
+					if rasterizedColors[i][j+1] == 0 {
+						rasterizedColors[i][j+1] = 2
+						rasterizedColors[i][j] = 0
+					} else if i < rows-1 && rasterizedColors[i+1][j+1] == 0 {
+						rasterizedColors[i+1][j+1] = 2
+						rasterizedColors[i][j] = 0
+					} else if i > 0 && rasterizedColors[i-1][j+1] == 0 {
+						rasterizedColors[i-1][j+1] = 2
+						rasterizedColors[i][j] = 0
+					}
+				}
+				// 2 represents that sand block had been moved from above row to below row
+				if rasterizedColors[i][j] == 2 && j < cols-1 {
+					rasterizedColors[i][j] = 1
+				}
+
+				// sim for water
+				if rasterizedColors[i][j] == 3 {
+					if rasterizedColors[i][j+1] == 0 {
+						rasterizedColors[i][j+1] = 4
+						rasterizedColors[i][j] = 0
+					} else if i < rows-1 && rasterizedColors[i+1][j+1] == 0 {
+						rasterizedColors[i+1][j+1] = 4
+						rasterizedColors[i][j] = 0
+					} else if i > 0 && rasterizedColors[i-1][j+1] == 0 {
+						rasterizedColors[i-1][j+1] = 4
+						rasterizedColors[i][j] = 0
+					} else if i > 0 && i < rows-1 {
+						if rasterizedColors[i+1][j] == 0 && i < rows-2 {
+							if rasterizedColors[i+2][j] == 0 {
+								rasterizedColors[i+1][j] = 4
+								rasterizedColors[i][j] = 0
+							}
+						} else if rasterizedColors[i-1][j] == 0 {
+							rasterizedColors[i-1][j] = 4
+							rasterizedColors[i][j] = 0
+						}
+
 					}
 				}
 
-				if rasterizedColors[i*cols+j] == 1 && j < cols-1 {
-					if rasterizedColors[i*cols+(j+1)] == 0 {
-						rasterizedColors[i*cols+(j+1)] = 2
-						rasterizedColors[i*cols+j] = 0
-					}
-				}
-				if rasterizedColors[i*cols+j] == 2 && j < cols-1 {
-					rasterizedColors[i*cols+j] = 1
+				// 4 represents that water block had been moved from above row to below row
+				if rasterizedColors[i][j] == 4 && j < cols-1 {
+					rasterizedColors[i][j] = 3
 				}
 
 				nero := CreateSquare(
@@ -182,28 +231,28 @@ func run() {
 			}
 		}
 
-		// fmt.Println(rasterizedColors)
-		for i := range rasterizedMatrix {
-			var colo float64
-			if rasterizedColors[i] == 1 || rasterizedColors[i] == 2 {
-				colo = 1
-			} else {
-				colo = 0
+		for i, row := range rasterizedColors {
+			for j := range row {
+				if rasterizedColors[i][j] == 1 || rasterizedColors[i][j] == 2 {
+					imd.Color = pixel.RGB(sandColor[0], sandColor[1], sandColor[2])
+
+				} else if rasterizedColors[i][j] == 3 || rasterizedColors[i][j] == 4 {
+					imd.Color = pixel.Alpha(0.5).Mul(pixel.RGB(waterColor[0], waterColor[1], waterColor[2]))
+				} else {
+					imd.Color = pixel.RGB(0.1, 0.17, 0.12)
+				}
+
+				for k := range rasterizedMatrix[i*cols+j] {
+					imd.Push(rasterizedMatrix[i*cols+j][k])
+				}
+				imd.Polygon(0)
 			}
-			// colo := float64(rasterizedColors[i])
-			imd.Color = pixel.RGB(colo, colo, colo)
-			for j := range rasterizedMatrix[i] {
-				imd.Push(rasterizedMatrix[i][j])
-			}
-			imd.Polygon(0)
 		}
 		imd.Draw(win)
 
 		win.Update()
-		time.Sleep(time.Millisecond * 10)
+		// time.Sleep(time.Millisecond * 10)
 	}
-	// fmt.Println(rasterizedMatrix)
-
 }
 
 // in an array there are blocks we check if our mouse is inside a given block
