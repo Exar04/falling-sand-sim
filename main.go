@@ -5,6 +5,7 @@ import (
 	"image"
 	_ "image/png"
 	"os"
+	"sync"
 
 	"github.com/faiface/pixel"
 	"github.com/faiface/pixel/imdraw"
@@ -77,25 +78,34 @@ func runo() {
 		panic(err)
 	}
 
-	imd := imdraw.New(nil)
-	imd.Push(pixel.V(100, 200))
-	imd.Push(pixel.V(100, 100))
-	imd.Push(pixel.V(200, 100))
-	imd.Push(pixel.V(200, 200))
+	squareMat := make([][]int, rows)
+	for i := range squareMat {
+		squareMat[i] = make([]int, cols)
+	}
 
-	imd.Polygon(0)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			squareMat[i][j] = j // Assigning a simple value for demonstration
+		}
+	}
 
-	imd.Push(pixel.V(300, 400))
-	imd.Push(pixel.V(300, 300))
-	imd.Push(pixel.V(400, 300))
-	imd.Push(pixel.V(400, 400))
-
-	imd.Polygon(0)
-
-	imd.Draw(win)
 	for !win.Closed() {
 
-		imd.Draw(win)
+		for i := 0; i < rows; i++ {
+			for j := 0; j < cols; j++ {
+				npx := normalizeToWindowSizeX(float64(i), 0, float64(rows))
+				npy := normalizeToWindowSizeY(float64(j), 0, float64(cols))
+
+				sq1 := CreateSquare(npx, npy, windowSizeX/rows, pixel.RGB(1, 1, 1))
+				drawsq1 := sq1.DrawSquare()
+
+				sq2 := CreateSquare(npx+3, npy+3, windowSizeX/rows-6, pixel.RGB(0, 0, 0))
+				drawsq2 := sq2.DrawSquare()
+
+				drawsq1.Draw(win)
+				drawsq2.Draw(win)
+			}
+		}
 		win.Update()
 	}
 }
@@ -126,7 +136,6 @@ func run() {
 	// rasterizedColors := make([]int, rows*cols)
 	rasterizedColors := make([][]int, rows)
 
-	colorSwitch := true
 	sandColor := [3]float64{0.96, 0.84, 0.65}
 	waterColor := [3]float64{0.65, 0.88, 0.93}
 
@@ -136,7 +145,6 @@ func run() {
 		normalisedMatrixPositionValues[i] = make([]pixel.Vec, cols)
 		rasterizedColors[i] = make([]int, cols)
 	}
-
 	for i := 0; i < rows; i++ {
 		for j := 0; j < cols; j++ {
 			squareMat[i][j] = false
@@ -151,6 +159,10 @@ func run() {
 		}
 	}
 
+	// throw mouse listener in different thread
+	// go mouseLeftClickListener(win, colorSwitch)
+
+	wg := &sync.WaitGroup{}
 	for !win.Closed() {
 
 		win.Clear(pixel.RGB(0.1, .17, .12))
@@ -158,81 +170,165 @@ func run() {
 
 		imd := imdraw.New(nil)
 
-		if win.JustReleased(pixelgl.MouseButtonLeft) {
-			colorSwitch = !colorSwitch
-		}
-
 		for i := 0; i < rows; i++ {
-			for j := 0; j < cols; j++ {
+			// this function traverses row by row
+			func(i int, wg *sync.WaitGroup) {
+				for j := 0; j < cols; j++ {
 
-				if win.Pressed(pixelgl.MouseButtonLeft) {
-					if isMouseInsideBlock(win, preDefPositionMatrix[i][j].X, preDefPositionMatrix[i][j].Y, sizeOfBlock) {
-						if colorSwitch {
+					// to traverse colums instead of rows
+
+					if win.Pressed(pixelgl.MouseButtonLeft) {
+						if isMouseInsideBlock(win, preDefPositionMatrix[i][j].X, preDefPositionMatrix[i][j].Y, sizeOfBlock) {
 							rasterizedColors[i][j] = 1 // 1 represents sand
-						} else {
+						}
+					}
+					if win.Pressed(pixelgl.MouseButtonRight) {
+						if isMouseInsideBlock(win, preDefPositionMatrix[i][j].X, preDefPositionMatrix[i][j].Y, sizeOfBlock) {
 							rasterizedColors[i][j] = 3 // 3 represents water
 						}
 					}
-				}
-				// sim for sand
-				if rasterizedColors[i][j] == 1 {
-					if rasterizedColors[i][j+1] == 0 {
-						rasterizedColors[i][j+1] = 2
-						rasterizedColors[i][j] = 0
-					} else if i < rows-1 && rasterizedColors[i+1][j+1] == 0 {
-						rasterizedColors[i+1][j+1] = 2
-						rasterizedColors[i][j] = 0
-					} else if i > 0 && rasterizedColors[i-1][j+1] == 0 {
-						rasterizedColors[i-1][j+1] = 2
-						rasterizedColors[i][j] = 0
-					} else if i > 0 && (rasterizedColors[i][j+1] == 3 || rasterizedColors[i][j+1] == 4) {
-						rasterizedColors[i][j+1] = 2
-						rasterizedColors[i][j] = 3
+					// sim for sand
+					if rasterizedColors[i][j] == 1 {
+						if rasterizedColors[i][j+1] == 0 {
+							rasterizedColors[i][j+1] = 2
+							rasterizedColors[i][j] = 0
+						} else if i < rows-1 && rasterizedColors[i+1][j+1] == 0 {
+							rasterizedColors[i+1][j+1] = 2
+							rasterizedColors[i][j] = 0
+						} else if i > 0 && rasterizedColors[i-1][j+1] == 0 {
+							rasterizedColors[i-1][j+1] = 2
+							rasterizedColors[i][j] = 0
+						} else if i > 0 && (rasterizedColors[i][j+1] == 3 || rasterizedColors[i][j+1] == 4) {
+							rasterizedColors[i][j+1] = 2
+							rasterizedColors[i][j] = 3
+						}
 					}
-				}
-				// 2 represents that sand block had been moved from above row to below row
-				if rasterizedColors[i][j] == 2 && j < cols-1 {
-					rasterizedColors[i][j] = 1
-				}
+					// 2 represents that sand block had been moved from above row to below row
+					if rasterizedColors[i][j] == 2 && j < cols-1 {
+						rasterizedColors[i][j] = 1
+					}
 
-				// sim for water
-				if rasterizedColors[i][j] == 3 {
-					if rasterizedColors[i][j+1] == 0 {
-						rasterizedColors[i][j+1] = 4
-						rasterizedColors[i][j] = 0
-					} else if i < rows-1 && rasterizedColors[i+1][j+1] == 0 {
-						rasterizedColors[i+1][j+1] = 4
-						rasterizedColors[i][j] = 0
-					} else if i > 0 && rasterizedColors[i-1][j+1] == 0 {
-						rasterizedColors[i-1][j+1] = 4
-						rasterizedColors[i][j] = 0
-					} else if i > 0 && i < rows-1 {
-						if rasterizedColors[i+1][j] == 0 && i < rows-2 {
-							if rasterizedColors[i+2][j] == 0 {
-								rasterizedColors[i+1][j] = 4
+					// sim for water
+					if rasterizedColors[i][j] == 3 {
+						if rasterizedColors[i][j+1] == 0 {
+							rasterizedColors[i][j+1] = 4
+							rasterizedColors[i][j] = 0
+						} else if i < rows-1 && rasterizedColors[i+1][j+1] == 0 {
+							rasterizedColors[i+1][j+1] = 4
+							rasterizedColors[i][j] = 0
+						} else if i > 0 && rasterizedColors[i-1][j+1] == 0 {
+							rasterizedColors[i-1][j+1] = 4
+							rasterizedColors[i][j] = 0
+						} else if i > 0 && i < rows-1 {
+							if rasterizedColors[i+1][j] == 0 && i < rows-2 {
+								if rasterizedColors[i+2][j] == 0 {
+									rasterizedColors[i+1][j] = 4
+									rasterizedColors[i][j] = 0
+								}
+							} else if rasterizedColors[i-1][j] == 0 {
+								rasterizedColors[i-1][j] = 4
 								rasterizedColors[i][j] = 0
 							}
-						} else if rasterizedColors[i-1][j] == 0 {
-							rasterizedColors[i-1][j] = 4
-							rasterizedColors[i][j] = 0
+
 						}
-
 					}
-				}
 
-				// 4 represents that water block had been moved from above row to below row
-				if rasterizedColors[i][j] == 4 && j < cols-1 {
-					rasterizedColors[i][j] = 3
-				}
+					// 4 represents that water block had been moved from above row to below row
+					if rasterizedColors[i][j] == 4 && j < cols-1 {
+						rasterizedColors[i][j] = 3
+					}
 
-				nero := CreateSquare(
-					normalisedMatrixPositionValues[i][j].X,
-					normalisedMatrixPositionValues[i][j].Y,
-					float64(windowSizeX/rows), pixel.RGB(1, 1, 1),
-				)
-				rasterizedMatrix = append(rasterizedMatrix, nero.pushSqr())
-			}
+					nero := CreateSquare(
+						normalisedMatrixPositionValues[i][j].X,
+						normalisedMatrixPositionValues[i][j].Y,
+						float64(windowSizeX/rows), pixel.RGB(1, 1, 1),
+					)
+					rasterizedMatrix = append(rasterizedMatrix, nero.pushSqr())
+				}
+			}(i, wg)
 		}
+
+		//	// this funciton traverses column by column
+		// for i := 0; i < rows; i++ {
+		// 	if i%2 == 0 {
+		// 		wg.Add(1)
+		// 		go func(i int, wg *sync.WaitGroup) {
+		// 			defer wg.Done()
+		// 			for j := 0; j < cols; j++ {
+		// 				// to traverse colums instead of rows
+
+		// 				if win.Pressed(pixelgl.MouseButtonLeft) {
+		// 					if isMouseInsideBlock(win, preDefPositionMatrix[j][i].X, preDefPositionMatrix[j][i].Y, sizeOfBlock) {
+		// 						if colorSwitch {
+		// 							rasterizedColors[j][i] = 1 // 1 represents sand
+		// 						} else {
+		// 							rasterizedColors[j][i] = 3 // 3 represents water
+		// 						}
+		// 					}
+		// 				}
+		// 				// sim for sand
+		// 				if i < rows-1 && rasterizedColors[j][i] == 1 {
+		// 					if rasterizedColors[j][i+1] == 0 {
+		// 						rasterizedColors[j][i+1] = 2
+		// 						rasterizedColors[j][i] = 0
+		// 					} else if j < rows-2 && rasterizedColors[j+1][i+1] == 0 {
+		// 						rasterizedColors[j+1][i+1] = 2
+		// 						rasterizedColors[j][i] = 0
+		// 					} else if j > 0 && rasterizedColors[j-1][i+1] == 0 {
+		// 						rasterizedColors[j-1][i+1] = 2
+		// 						rasterizedColors[j][i] = 0
+		// 					} else if j > 0 && (rasterizedColors[j][i+1] == 3 || rasterizedColors[j][i+1] == 4) {
+		// 						rasterizedColors[j][i+1] = 2
+		// 						rasterizedColors[j][i] = 3
+		// 					}
+		// 				}
+		// 				// 2 represents that sand block had been moved from above row to below row
+		// 				if rasterizedColors[j][i] == 2 && j < cols-1 {
+		// 					rasterizedColors[j][i] = 1
+		// 				}
+
+		// 				// sim for water
+		// 				if rasterizedColors[j][i] == 3 {
+		// 					if rasterizedColors[j][i+1] == 0 {
+		// 						rasterizedColors[j][i+1] = 4
+		// 						rasterizedColors[j][i] = 0
+		// 					} else if j < rows-1 && rasterizedColors[j+1][i+1] == 0 {
+		// 						rasterizedColors[j+1][i+1] = 4
+		// 						rasterizedColors[j][i] = 0
+		// 					} else if j > 0 && rasterizedColors[j-1][i+1] == 0 {
+		// 						rasterizedColors[j-1][i+1] = 4
+		// 						rasterizedColors[j][i] = 0
+		// 					} else if j > 0 && j < rows-1 {
+		// 						if rasterizedColors[j+1][i] == 0 && j < rows-2 {
+		// 							if rasterizedColors[j+2][i] == 0 {
+		// 								rasterizedColors[j+1][i] = 4
+		// 								rasterizedColors[j][i] = 0
+		// 							}
+		// 						} else if rasterizedColors[j-1][i] == 0 {
+		// 							rasterizedColors[j-1][i] = 4
+		// 							rasterizedColors[j][i] = 0
+		// 						}
+		// 					}
+		// 				}
+
+		// 				// 4 represents that water block had been moved from above row to below row
+		// 				if rasterizedColors[j][i] == 4 && i < cols-1 {
+		// 					rasterizedColors[j][i] = 3
+		// 				}
+
+		// 				nero := CreateSquare(
+		// 					normalisedMatrixPositionValues[i][j].X,
+		// 					normalisedMatrixPositionValues[i][j].Y,
+		// 					float64(windowSizeX/rows), pixel.RGB(1, 1, 1),
+		// 				)
+		// 				mut.Lock()
+		// 				rasterizedMatrix = append(rasterizedMatrix, nero.pushSqr())
+		// 				mut.Unlock()
+		// 			}
+		// 		}(i, wg)
+		// 	}
+		// }
+		// wg.Wait()
 
 		for i, row := range rasterizedColors {
 			for j := range row {
@@ -246,6 +342,7 @@ func run() {
 				}
 
 				for k := range rasterizedMatrix[i*cols+j] {
+					// fmt.Printf("k : %d, i : %d, j : %d, cols: %d, i*cols+j : %d , rclen: %d \n", k, i, j, cols, i*cols+j, len(rasterizedColors))
 					imd.Push(rasterizedMatrix[i*cols+j][k])
 				}
 				imd.Polygon(0)
@@ -257,6 +354,9 @@ func run() {
 		// time.Sleep(time.Millisecond * 10)
 	}
 }
+
+// func wt(i int, wg *sync.WaitGroup, win *pixelgl.Window, preDefPositionMatrix [][]pixel.Vec, rasterizedColors [][]int, normalisedMatrixPositionValues [][]pixel.Vec, rasterizedMatrix [][4]pixel.Vec, colorSwitch bool) {
+// }
 
 // in an array there are blocks we check if our mouse is inside a given block
 // we will calculate it by ckecking if our mouse is inside the range of your block
@@ -274,6 +374,20 @@ func getPositionOfBlock(x, y, s int) pixel.Vec {
 	py := windowSizeY - normalizeToWindowSizeY(float64(y), 0, float64(cols)) - float64(s)
 	p := pixel.Vec{X: px, Y: py}
 	return p
+}
+
+func mouseLeftClickListener(win *pixelgl.Window, colorSwitch bool) {
+	for true {
+		if win.Pressed(pixelgl.MouseButtonLeft) {
+			// if isMouseInsideBlock(win, preDefPositionMatrix[i][j].X, preDefPositionMatrix[i][j].Y, sizeOfBlock) {
+			// 	if colorSwitch {
+			// 		rasterizedColors[i][j] = 1 // 1 represents sand
+			// 	} else {
+			// 		rasterizedColors[i][j] = 3 // 3 represents water
+			// 	}
+			// }
+		}
+	}
 }
 
 func normalizeTo_0_255(value, min, max float64) float64 {
